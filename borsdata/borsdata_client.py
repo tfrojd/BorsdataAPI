@@ -7,7 +7,7 @@ import matplotlib.pylab as plt
 # datetime for date- and time-stuff
 import datetime as dt
 # user constants
-from borsdata import constants as constants
+import constants
 import numpy as np
 import os
 
@@ -21,7 +21,7 @@ class BorsdataClient:
         self._borsdata_api = BorsdataAPI(constants.API_KEY)
         self._instruments_with_meta_data = pd.DataFrame()
 
-    def instruments_with_meta_data(self):
+    def instruments_with_meta_data(self, save_to_disk=False):
         """
         creating a csv and xlsx of the APIs instrument-data (including meta-data)
         and saves it to path defined in constants (default ../file_exports/)
@@ -54,30 +54,33 @@ class BorsdataClient:
                 # .loc locates the rows where the criteria (inside the brackets, []) is fulfilled
                 # located rows (should be only one) get the column 'name' and return its value-array
                 # take the first value in that array ([0], should be only one value)
-                market = markets.loc[markets.index == instrument['marketId']]['name'].values[0]
-                country = countries.loc[countries.index == instrument['countryId']]['name'].values[0]
+                market = markets.loc[markets.index ==
+                                     instrument['marketId']]['name'].values[0]
+                country = countries.loc[countries.index ==
+                                        instrument['countryId']]['name'].values[0]
                 sector = 'N/A'
                 branch = 'N/A'
                 # index-typed instruments does not have a sector or branch
                 if market.lower() != 'index':
-                    sector = sectors.loc[sectors.index == instrument['sectorId']]['name'].values[0]
-                    branch = branches.loc[branches.index == instrument['branchId']]['name'].values[0]
+                    sector = sectors.loc[sectors.index ==
+                                         instrument['sectorId']]['name'].values[0]
+                    branch = branches.loc[branches.index ==
+                                          instrument['branchId']]['name'].values[0]
                 # appending current data to dataframe, i.e. adding a row to the table.
                 df_temp = pd.DataFrame([{'name': name, 'ins_id': ins_id, 'ticker': ticker, 'isin': isin,
                                          'instrument_type': instrument_type,
                                          'market': market, 'country': country, 'sector': sector, 'branch': branch}])
-                instrument_df = pd.concat([instrument_df, df_temp], ignore_index=True)
-            # create directory if it do not exist
-            if not os.path.exists(constants.EXPORT_PATH):
-                os.makedirs(constants.EXPORT_PATH)
-            # to csv
-            instrument_df.to_csv(constants.EXPORT_PATH + 'instrument_with_meta_data.csv')
-            # creating excel-document
-            excel_writer = pd.ExcelWriter(constants.EXPORT_PATH + 'instrument_with_meta_data.xlsx')
-            # adding one sheet
-            instrument_df.to_excel(excel_writer, 'instruments_with_meta_data')
-            # saving the document
-            excel_writer.save()
+                instrument_df = pd.concat(
+                    [instrument_df, df_temp], ignore_index=True)
+            if save_to_disk:
+                # to csv
+                instrument_df.to_csv(os.path.dirname(
+                    __file__) + "/" + constants.EXPORT_PATH +
+                    'instrument_with_meta_data.csv')
+                # saving to excel
+                instrument_df.to_excel(os.path.dirname(
+                    __file__) + "/" + constants.EXPORT_PATH + 'instrument_with_meta_data.xlsx')
+                print("Saved InstrumentsWIthMetadatatoDisk")
             self._instruments_with_meta_data = instrument_df
             return instrument_df
 
@@ -94,7 +97,8 @@ class BorsdataClient:
         # assigning the 50 day rolling mean to it
         stock_prices['sma50'] = stock_prices['close'].rolling(window=50).mean()
         # filtering out data after 2015 for plot
-        filtered_data = stock_prices[stock_prices.index > dt.datetime(2015, 1, 1)]
+        filtered_data = stock_prices[stock_prices.index > dt.datetime(
+            2015, 1, 1)]
         # plotting 'close' (with 'date' as index)
         plt.plot(filtered_data['close'], color='blue', label='close')
         # plotting 'sma50' (with 'date' as index)
@@ -117,23 +121,29 @@ class BorsdataClient:
         # using defined function above to retrieve dataframe of all instruments
         instruments = self.instruments_with_meta_data()
         # filtering out the instruments with correct market and country
-        filtered_instruments = instruments.loc[(instruments['market'] == market) & (instruments['country'] == country)]
+        filtered_instruments = instruments.loc[(
+            instruments['market'] == market) & (instruments['country'] == country)]
         # creating new, empty dataframe
         stock_prices = pd.DataFrame()
         # looping through all rows in filtered dataframe
         for index, instrument in filtered_instruments.iterrows():
             # fetching the stock prices for the current instrument
-            instrument_stock_price = self._borsdata_api.get_instrument_stock_prices(int(instrument['ins_id']))
+            instrument_stock_price = self._borsdata_api.get_instrument_stock_prices(
+                int(instrument['ins_id']))
             instrument_stock_price.sort_index(inplace=True)
             # calculating the current instruments percent change
-            instrument_stock_price['pct_change'] = instrument_stock_price['close'].pct_change(percent_change)
+            instrument_stock_price['pct_change'] = instrument_stock_price['close'].pct_change(
+                percent_change)
             # getting the last row of the dataframe, i.e. the last days values
             last_row = instrument_stock_price.iloc[[-1]]
             # appending the instruments name and last days percent change to new dataframe
-            df_temp = pd.DataFrame([{'stock': instrument['name'], 'pct_change': round(last_row['pct_change'].values[0] * 100, 2)}])
-            stock_prices = pd.concat([stock_prices, df_temp], ignore_index=True)
+            df_temp = pd.DataFrame([{'stock': instrument['name'], 'pct_change': round(
+                last_row['pct_change'].values[0] * 100, 2)}])
+            stock_prices = pd.concat(
+                [stock_prices, df_temp], ignore_index=True)
         # printing the top sorted by pct_change-column
-        print(stock_prices.sort_values('pct_change', ascending=False).head(number_of_stocks))
+        print(stock_prices.sort_values('pct_change',
+              ascending=False).head(number_of_stocks))
         return stock_prices
 
     def history_kpi(self, kpi, market, country, year):
@@ -149,13 +159,15 @@ class BorsdataClient:
         # using defined function above to retrieve data frame of all instruments
         instruments = self.instruments_with_meta_data()
         # filtering out the instruments with correct market and country
-        filtered_instruments = instruments.loc[(instruments['market'] == market) & (instruments['country'] == country)]
+        filtered_instruments = instruments.loc[(
+            instruments['market'] == market) & (instruments['country'] == country)]
         # creating empty array (to hold data frames)
         frames = []
         # looping through all rows in filtered data frame
         for index, instrument in filtered_instruments.iterrows():
             # fetching the stock prices for the current instrument
-            instrument_kpi_history = self._borsdata_api.get_kpi_history(int(instrument['ins_id']), kpi, 'year', 'mean')
+            instrument_kpi_history = self._borsdata_api.get_kpi_history(
+                int(instrument['ins_id']), kpi, 'year', 'mean')
             # check to see if response holds any data.
             if len(instrument_kpi_history) > 0:
                 # resetting index and adding name as a column
@@ -168,7 +180,8 @@ class BorsdataClient:
         symbols_df = pd.concat(frames)
         # the data frame has the columns ['year', 'period', 'kpi_value', 'name']
         # show year ranked from highest to lowest, show top 5
-        print(symbols_df[symbols_df.index == year].sort_values('kpiValue', ascending=False).head(5))
+        print(symbols_df[symbols_df.index == year].sort_values(
+            'kpiValue', ascending=False).head(5))
         return symbols_df
 
     def get_latest_pe(self, ins_id):
@@ -179,7 +192,8 @@ class BorsdataClient:
         """
         # creating api-object
         # fetching all instrument data
-        reports_quarter, reports_year, reports_r12 = self._borsdata_api.get_instrument_reports(3)
+        reports_quarter, reports_year, reports_r12 = self._borsdata_api.get_instrument_reports(
+            3)
         # getting the last reported eps-value
         reports_r12.sort_index(inplace=True)
         print(reports_r12.tail())
@@ -193,16 +207,17 @@ class BorsdataClient:
         last_date = stock_prices.index.values[-1]
         # getting instruments data to retrieve the name of the ins_id
         instruments = self._borsdata_api.get_instruments()
-        instrument_name = instruments[instruments.index == ins_id]['name'].values[0]
+        instrument_name = instruments[instruments.index ==
+                                      ins_id]['name'].values[0]
         # printing the name and calculated PE-ratio with the corresponding date. (array slicing, [:10])
-        print(f"PE for {instrument_name} is {round(last_close / last_eps, 1)} with data from {str(last_date)[:10]}")
+        print(
+            f"PE for {instrument_name} is {round(last_close / last_eps, 1)} with data from {str(last_date)[:10]}")
 
     def breadth_large_cap_sweden(self):
         """
         plots the breadth (number of stocks above moving-average 40) for Large Cap Sweden compared
         to Large Cap Sweden Index
         """
-        # creating api-object
         # using defined function above to retrieve data frame of all instruments
         instruments = self.instruments_with_meta_data()
         # filtering out the instruments with correct market and country
@@ -213,7 +228,8 @@ class BorsdataClient:
         # looping through all rows in filtered data frame
         for index, instrument in filtered_instruments.iterrows():
             # fetching the stock prices for the current instrument
-            instrument_stock_prices = self._borsdata_api.get_instrument_stock_prices(int(instrument['ins_id']))
+            instrument_stock_prices = self._borsdata_api.get_instrument_stock_prices(
+                int(instrument['ins_id']))
             # using numpy's where function to create a 1 if close > ma40, else a 0
             instrument_stock_prices[f'above_ma40'] = np.where(
                 instrument_stock_prices['close'] > instrument_stock_prices['close'].rolling(window=40).mean(), 1, 0)
@@ -234,11 +250,77 @@ class BorsdataClient:
         fig, (ax1, ax2) = plt.subplots(2, sharex=True)
         # plotting
         ax1.plot(omx['close'], label="OMXSLCPI")
-        ax2.plot(symbols_df[f'above_ma40'], label="number of stocks above ma40")
+        ax2.plot(symbols_df[f'above_ma40'],
+                 label="number of stocks above ma40")
         # show legend
         ax1.legend()
         ax2.legend()
         plt.show()
+
+    def _get_stock_id_list(self, length=50):
+        instruments = self.instruments_with_meta_data()
+        list_of_stock_ids = []
+        temp = []
+        ctr = 0
+        for index, instrument in instruments.iterrows():
+            if instrument["instrument_type"] == "Aktie":
+                temp.append(instrument["ins_id"])
+                ctr += 1
+                if ctr == length:
+                    list_of_stock_ids.append(temp.copy())
+                    temp.clear()
+                    ctr = 0
+        return list_of_stock_ids
+
+    def get_all_stock_data_and_save_to_disk(self, location="/data/data.pickle", from_date="2010-01-01"):
+        frames = []
+        ins_id_list = self._get_stock_id_list()
+        for ins_ids in ins_id_list:
+            df = self._borsdata_api.get_instrument_stock_prices_list(
+                ins_ids, from_date=from_date)
+            frames.append(df)
+        stock_data = pd.concat(frames)
+        stock_data = stock_data.groupby("stock_id", as_index=False).apply(
+            lambda x: add_meta_data_to_stock_prices(x, self._instruments_with_meta_data))
+        stock_data.to_pickle(os.path.dirname(
+            __file__) + "/" + constants.EXPORT_PATH + "data.pickle")
+        print(
+            f'Saved data to: {os.path.dirname(__file__) + "/" + constants.EXPORT_PATH + "data.pickle"}')
+        return stock_data
+
+    def get_all_report_data_and_save_to_disk(self):
+        frames_quarter = []
+        frames_year = []
+        frames_r12 = []
+        ins_id_list = self._get_stock_id_list()
+        for ins_ids in ins_id_list:
+            quarter, year, r12 = self._borsdata_api.get_instrument_report_list(
+                ins_ids)
+            frames_quarter.append(quarter)
+            frames_year.append(year)
+            frames_r12.append(r12)
+        quarter_data = pd.concat(frames_quarter)
+        quarter_data.to_pickle(os.path.dirname(
+            __file__) + "/" + constants.EXPORT_PATH + "reports_quarter_data.pickle")
+        year_data = pd.concat(frames_year)
+        year_data.to_pickle(os.path.dirname(
+            __file__) + "/" + constants.EXPORT_PATH + "reports_year_data.pickle")
+        r12_data = pd.concat(frames_r12)
+        r12_data.to_pickle(os.path.dirname(
+            __file__) + "/" + constants.EXPORT_PATH + "reports_r12_data.pickle")
+        return quarter_data, year_data, r12_data
+
+
+def add_meta_data_to_stock_prices(df, meta):
+    stock_id = df["stock_id"].values[0]
+    meta_data = meta.loc[meta.ins_id == stock_id]
+    df["country"] = meta_data["country"].values[0]
+    df["name"] = meta_data["name"].values[0]
+    df["ticker"] = meta_data["ticker"].values[0]
+    df["sector"] = meta_data["sector"].values[0]
+    df["branch"] = meta_data["branch"].values[0]
+    df["market"] = meta_data["market"].values[0]
+    return df
 
 
 if __name__ == "__main__":
@@ -250,6 +332,7 @@ if __name__ == "__main__":
     borsdata_client.get_latest_pe(87)
     borsdata_client.instruments_with_meta_data()
     borsdata_client.plot_stock_prices(3)  # ABB
-    borsdata_client.history_kpi(2, 'Large Cap', 'Sverige', 2020)  # 2 == Price/Earnings (PE)
+    # 2 == Price/Earnings (PE)
+    borsdata_client.history_kpi(2, 'Large Cap', 'Sverige', 2020)
     borsdata_client.top_performers('Large Cap', 'Sverige', 10,
                                    5)  # showing top10 performers based on 5 day return (1 week) for Large Cap Sverige.

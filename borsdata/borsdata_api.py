@@ -1,20 +1,23 @@
 import requests
 import pandas as pd
 import time
-from borsdata import constants as constants
+import constants
 
 # pandas options for string representation of data frames (print)
 pd.set_option("display.max_columns", None)
 pd.set_option("display.max_rows", None)
+pd.options.mode.dtype_backend = 'pyarrow'
 
 
 class BorsdataAPI:
-    def __init__(self, _api_key):
+    def __init__(self, _api_key, verbose=False):
         self._api_key = _api_key
         self._url_root = "https://apiservice.borsdata.se/v1/"
         self._last_api_call = 0
         self._api_calls_per_second = 10
-        self._params = {'authKey': self._api_key, 'maxYearCount': 20, 'maxR12QCount': 40, 'maxCount': 20}
+        self._params = {'authKey': self._api_key,
+                        'maxYearCount': 20, 'maxR12QCount': 40, 'maxCount': 20}
+        self._verbose = verbose
 
     def _call_api(self, url, **kwargs):
         """
@@ -27,8 +30,10 @@ class BorsdataAPI:
         time_delta = current_time - self._last_api_call
         if time_delta < 1 / self._api_calls_per_second:
             time.sleep(1 / self._api_calls_per_second - time_delta)
-        response = requests.get(self._url_root + url, self._get_params(**kwargs))
-        print(response.url)
+        response = requests.get(self._url_root + url,
+                                self._get_params(**kwargs))
+        if self._verbose:
+            print(response.url)
         self._last_api_call = time.time()
         if response.status_code != 200:
             print(f"API-Error, status code: {response.status_code}")
@@ -49,6 +54,20 @@ class BorsdataAPI:
                 else:
                     print(f"BorsdataAPI >> Unknown param: {key}={value}")
         return params
+
+    def _get_stock_id_list(self, length=50):
+        instruments = self.get_instruments()
+        list_of_stock_ids = []
+        temp = []
+        ctr = 0
+        for index, instrument in instruments.iterrows():
+            temp.append(index)
+            ctr += 1
+            if ctr == length:
+                list_of_stock_ids.append(temp.copy())
+                temp.clear()
+                ctr = 0
+        return list_of_stock_ids
 
     @staticmethod
     def _set_index(df, index, ascending=True):
@@ -201,7 +220,8 @@ class BorsdataAPI:
 
         json_data = self._call_api(url)
         df = pd.json_normalize(json_data["values"])
-        df.rename(columns={"y": "year", "p": "period", "v": "kpiValue"}, inplace=True)
+        df.rename(columns={"y": "year", "p": "period",
+                  "v": "kpiValue"}, inplace=True)
         self._set_index(df, ["year", "period"], ascending=False)
         return df
 
@@ -217,9 +237,11 @@ class BorsdataAPI:
         if max_count is not None:
             self._params["maxCount"] = max_count
         json_data = self._call_api(url)
-        df = pd.json_normalize(json_data["kpis"], record_path="values", meta="KpiId")
+        df = pd.json_normalize(
+            json_data["kpis"], record_path="values", meta="KpiId")
         df.rename(
-            columns={"y": "year", "p": "period", "v": "kpiValue", "KpiId": "kpiId"},
+            columns={"y": "year", "p": "period",
+                     "v": "kpiValue", "KpiId": "kpiId"},
             inplace=True,
         )
         df = df.pivot_table(
@@ -340,18 +362,18 @@ class BorsdataAPI:
         """
         url = f"instruments/reports"
         json_data = self._call_api(url, instList=stock_id_list)
-        r12 = pd.json_normalize(json_data['reportList'], record_path="reportsR12", meta=["instrument"])
+        r12 = pd.json_normalize(
+            json_data['reportList'], record_path="reportsR12", meta=["instrument"])
         r12 = r12.rename(columns=str.lower)
         r12 = r12.rename(columns={'instrument': 'stock_id'})
-        r12.fillna(0, inplace=True)
-        quarter = pd.json_normalize(json_data['reportList'], record_path="reportsQuarter", meta=["instrument"])
+        quarter = pd.json_normalize(
+            json_data['reportList'], record_path="reportsQuarter", meta=["instrument"])
         quarter = quarter.rename(columns=str.lower)
         quarter = quarter.rename(columns={'instrument': 'stock_id'})
-        quarter.fillna(0, inplace=True)
-        year = pd.json_normalize(json_data['reportList'], record_path="reportsYear", meta=["instrument"])
+        year = pd.json_normalize(
+            json_data['reportList'], record_path="reportsYear", meta=["instrument"])
         year = year.rename(columns=str.lower)
         year = year.rename(columns={'instrument': 'stock_id'})
-        year.fillna(0, inplace=True)
         return quarter, year, r12
 
     def get_reports_metadata(self):
@@ -367,7 +389,8 @@ class BorsdataAPI:
             columns={"reportPropery": "reportProperty"},
             inplace=True,
         )
-        df["reportProperty"] = df["reportProperty"].apply(lambda x: x.replace("_", ""))
+        df["reportProperty"] = df["reportProperty"].apply(
+            lambda x: x.replace("_", ""))
         self._set_index(df, "reportProperty")
         return df
 
@@ -411,11 +434,12 @@ class BorsdataAPI:
         :return: pd.DataFrame
         """
         url = 'instruments/stockprices'
-        json_data = self._call_api(url, from_date=from_date, to=to_date, instList=stock_id_list)
-        stock_prices = pd.json_normalize(json_data['stockPricesArrayList'], "stockPricesList", ['instrument'])
+        json_data = self._call_api(
+            url, from_date=from_date, to=to_date, instList=stock_id_list)
+        stock_prices = pd.json_normalize(
+            json_data['stockPricesArrayList'], "stockPricesList", ['instrument'])
         stock_prices.rename(columns={'d': 'date', 'c': 'close', 'h': 'high', 'l': 'low',
                                      'o': 'open', 'v': 'volume', 'instrument': 'stock_id'}, inplace=True)
-        stock_prices.fillna(0, inplace=True)
         return stock_prices
 
     def get_instruments_stock_prices_last(self):
