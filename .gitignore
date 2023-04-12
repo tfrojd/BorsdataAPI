@@ -1,2 +1,7 @@
 borsdata/__pycache__
+borsdata/constants.py
 .idea
+.vscode
+borsdata/file_exports
+borsdata/data
+.gitignore
