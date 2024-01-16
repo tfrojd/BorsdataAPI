@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
 import time
-from borsdata import constants as constants
+import constants as constants
 
 # pandas options for string representation of data frames (print)
 pd.set_option("display.max_columns", None)

@@ -7,7 +7,7 @@ import matplotlib.pylab as plt
 # datetime for date- and time-stuff
 import datetime as dt
 # user constants
-from borsdata import constants as constants
+import constants as constants
 import numpy as np
 import os
 
